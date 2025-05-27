@@ -1,72 +1,62 @@
 import os
 import datetime
 import logging
-import asyncio
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-# — Настройка логирования
+# — Логирование
 logging.basicConfig(level=logging.INFO)
 
-# — Чтение токена и чата из окружения
-TOKEN = os.environ["BOT_TOKEN"]
+# — Чтение из окружения
+TOKEN   = os.environ["BOT_TOKEN"]
 CHAT_ID = int(os.environ["CHAT_ID"])
 
-# — Ваши участники и зоны
+# — Участники и зоны
 people = ["Гена", "Рома", "Алан"]
 zones  = ["Ванна и туалет", "Кухня", "Коридор"]
-
-# — Опорная дата начала ротации (поставьте ту, когда у вас стартовал первый цикл)
 BASE_DATE = datetime.date(2025, 1, 1)
 
-def get_schedule_for_today():
-    """Считает, сколько недель прошло с BASE_DATE, и выдаёт текущую ротацию."""
+# — Генерация текста расписания
+def render_schedule_text():
     today = datetime.date.today()
     weeks_passed = (today - BASE_DATE).days // 7
     offset = weeks_passed % len(people)
-    result = {}
+    lines = ["🧹 Расписание уборки на неделю:\n"]
     for i, zone in enumerate(zones):
-        result[zone] = people[(i + offset) % len(people)]
-    return result
-
-def render_schedule_text():
-    sched = get_schedule_for_today()
-    lines = ["🧹 Расписание уборки на неделю:",
-             f"📅 Неделя, стартовавшая {BASE_DATE.strftime('%d.%m.%Y')}"]
-    for zone, person in sched.items():
+        person = people[(i + offset) % len(people)]
         lines.append(f"▪ {zone}: {person}")
     return "\n".join(lines)
 
-# — Обработчик команды /schedule
+# — Обработчик /schedule
 async def schedule_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(render_schedule_text())
 
-# — Авто-отправка каждую неделю (понедельник, 09:00)
-async def send_weekly(app):
-    await app.bot.send_message(chat_id=CHAT_ID, text=render_schedule_text())
+# — Функция для планировщика
+async def send_weekly_schedule():
+    await application.bot.send_message(chat_id=CHAT_ID, text=render_schedule_text())
 
-async def main():
-    # инициализируем бота
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("schedule", schedule_command))
+# === Настройка бота и планировщика ===
 
-    # планировщик
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        send_weekly,
-        trigger="cron",
-        day_of_week="mon",
-        hour=9,
-        minute=0,
-        args=[app],
-    )
-    scheduler.start()
+# Создаём приложение
+application = ApplicationBuilder().token(TOKEN).build()
+application.add_handler(CommandHandler("schedule", schedule_command))
 
-    logging.info("Бот запущен, жду команду /schedule или понедельник 09:00")
-    await app.run_polling()
+# Настраиваем APScheduler
+scheduler = AsyncIOScheduler()
+scheduler.add_job(
+    send_weekly_schedule,
+    trigger="cron",
+    day_of_week="mon",
+    hour=9,
+    minute=0
+)
+scheduler.start()
 
+# === Запуск бота ===
 if __name__ == "__main__":
-    asyncio.run(main())
+    logging.info("Стартуем бот и запускаем polling...")
+    # .run_polling() самостоятельно запускает asyncio loop и не закрывает его некорректно
+    application.run_polling()
 
