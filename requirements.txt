@@ -1,3 +1,2 @@
 python-telegram-bot==20.7
-python-dotenv
-apscheduler
+apscheduler>=3.10
